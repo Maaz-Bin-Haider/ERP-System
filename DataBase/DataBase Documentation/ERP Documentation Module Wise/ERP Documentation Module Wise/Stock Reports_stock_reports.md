@@ -1,9 +1,22 @@
---===============================================================================================
---                                       STOCK Reports START
---===============================================================================================
--- ======================================================
--- 1. item_transaction_history - Updated
--- ======================================================
+# Stock Report Functions - Complete Documentation
+
+**Category:** Stock Report Functions
+**Total Functions:** 5
+
+---
+
+
+## 📈 STOCK REPORT FUNCTIONS
+
+**Total Functions:** 5
+
+---
+
+### Function 1: `item_transaction_history()`
+
+#### Complete SQL Code:
+
+```sql
 CREATE OR REPLACE FUNCTION public.item_transaction_history(
     p_item_name text, 
     p_from_date date DEFAULT NULL::date, 
@@ -79,11 +92,43 @@ BEGIN
              ph.serial_number;
 END;
 $$;
+```
 
+#### Parameters:
+- `p_item_name text`
+- `p_from_date date DEFAULT NULL::date`
+- `p_to_date date DEFAULT NULL::date`
 
--- ======================================================
--- 2. get_item_stock_by_name - Updated
--- ======================================================
+#### Returns:
+`TABLE(
+    item_name text, 
+    serial_number text, 
+    serial_comment text,
+    transaction_date date, 
+    transaction_type text, 
+    counterparty text, 
+    price numeric
+)`
+
+#### Purpose:
+Item Transaction History - Performs specialized database operation.
+
+#### Example SQL Call:
+
+```sql
+SELECT item_transaction_history(..., ..., ...);
+```
+
+#### Function Behavior:
+See complete SQL implementation above for detailed logic.
+
+---
+
+### Function 2: `get_item_stock_by_name()`
+
+#### Complete SQL Code:
+
+```sql
 CREATE OR REPLACE FUNCTION get_item_stock_by_name(p_item_name VARCHAR)
 RETURNS TABLE (
     item_id_out TEXT,
@@ -120,96 +165,39 @@ BEGIN
     ORDER BY rn;
 END;
 $$;
+```
 
+#### Parameters:
+- `p_item_name VARCHAR`
 
--- ======================================================
--- 3. stock_worth_report - Updated VIEW
--- ======================================================
+#### Returns:
+`TABLE (
+    item_id_out TEXT,
+    item_name_out VARCHAR(150),
+    serial_number_out VARCHAR(100),
+    serial_comment_out TEXT,
+    quantity_out TEXT
+)`
 
+#### Purpose:
+Get Item Stock By Name - Retrieves data from the database in JSON format.
 
-CREATE VIEW public.stock_worth_report AS
-WITH stock AS (
-    SELECT 
-        i.item_id,
-        i.item_name,
-        COUNT(pu.unit_id) OVER (PARTITION BY i.item_id) AS quantity,
-        pu.serial_number,
-        pu.serial_comment,
-        pit.unit_price AS purchase_price,
-        i.sale_price AS market_price,
-        ROW_NUMBER() OVER (PARTITION BY i.item_id ORDER BY pu.serial_number) AS rn
-    FROM public.purchaseunits pu
-    JOIN public.purchaseitems pit ON pu.purchase_item_id = pit.purchase_item_id
-    JOIN public.items i ON pit.item_id = i.item_id
-    WHERE pu.in_stock = true
-), 
-running AS (
-    SELECT 
-        stock.item_id,
-        stock.item_name,
-        stock.quantity,
-        stock.serial_number,
-        stock.serial_comment,
-        stock.purchase_price,
-        stock.market_price,
-        SUM(stock.purchase_price) OVER (ORDER BY stock.item_id, stock.rn) AS running_total_purchase,
-        SUM(stock.market_price) OVER (ORDER BY stock.item_id, stock.rn) AS running_total_market,
-        stock.rn
-    FROM stock
-)
-SELECT
-    CASE WHEN rn = 1 THEN item_id::TEXT ELSE ''::TEXT END AS item_id,
-    CASE WHEN rn = 1 THEN item_name ELSE ''::VARCHAR END AS item_name,
-    CASE WHEN rn = 1 THEN quantity::TEXT ELSE ''::TEXT END AS quantity,
-    serial_number,
-    serial_comment,
-    purchase_price,
-    market_price,
-    running_total_purchase,
-    running_total_market
-FROM running
-ORDER BY item_id::INTEGER, rn;
+#### Example SQL Call:
 
+```sql
+SELECT get_item_stock_by_name(...);
+```
 
--- ======================================================
--- 4. stock_report - Updated VIEW
--- ======================================================
-DROP VIEW IF EXISTS public.stock_report;
+#### Function Behavior:
+See complete SQL implementation above for detailed logic.
 
-CREATE VIEW public.stock_report AS
-WITH stock AS (
-    SELECT 
-        i.item_id,
-        i.item_name,
-        COUNT(pu.unit_id) OVER (PARTITION BY i.item_id) AS quantity,
-        pu.serial_number,
-        pu.serial_comment,
-        ROW_NUMBER() OVER (PARTITION BY i.item_id ORDER BY pu.serial_number) AS rn
-    FROM public.purchaseunits pu
-    JOIN public.purchaseitems pit ON pu.purchase_item_id = pit.purchase_item_id
-    JOIN public.items i ON pit.item_id = i.item_id
-    WHERE pu.in_stock = true
-)
-SELECT
-    CASE WHEN rn = 1 THEN item_id::TEXT ELSE ''::TEXT END AS item_id,
-    CASE WHEN rn = 1 THEN item_name ELSE ''::VARCHAR END AS item_name,
-    CASE WHEN rn = 1 THEN quantity::TEXT ELSE ''::TEXT END AS quantity,
-    serial_number,
-    serial_comment
-FROM stock
-ORDER BY item_id::INTEGER, rn;
+---
 
+### Function 3: `get_serial_ledger()`
 
--- ======================================================
--- 5. stock_summary - No changes needed (aggregate level)
--- ======================================================
--- This function works at item level aggregation, so serial_comment 
--- is not relevant here. No changes required.
+#### Complete SQL Code:
 
-
--- ======================================================
--- 6. get_serial_ledger - Updated
--- ======================================================
+```sql
 CREATE OR REPLACE FUNCTION public.get_serial_ledger(p_serial text) 
 RETURNS TABLE(
     serial_number text, 
@@ -339,9 +327,47 @@ BEGIN
 
 END;
 $$;
+```
 
+#### Parameters:
+- `p_serial text`
 
+#### Returns:
+`TABLE(
+    serial_number text, 
+    serial_comment text,
+    item_name text, 
+    txn_date date, 
+    particulars text, 
+    reference text, 
+    qty_in integer, 
+    qty_out integer, 
+    balance integer, 
+    party_name text, 
+    purchase_price numeric, 
+    sale_price numeric, 
+    profit numeric
+)`
 
+#### Purpose:
+Get Serial Ledger - Retrieves data from the database in JSON format.
+
+#### Example SQL Call:
+
+```sql
+SELECT get_serial_ledger(...);
+```
+
+#### Function Behavior:
+See complete SQL implementation above for detailed logic.
+
+---
+
+### Function 4: `stock_summary()`
+
+#### Complete SQL Code:
+
+```sql
 CREATE OR REPLACE FUNCTION public.stock_summary()
 RETURNS TABLE (
     item_id BIGINT,
@@ -372,11 +398,39 @@ BEGIN
         i.item_name ASC;
 END;
 $$;
+```
 
---
--- Name: get_serial_number_details(text); Type: FUNCTION; Schema: public; Owner: -
---
+#### Parameters:
+- None
 
+#### Returns:
+`TABLE (
+    item_id BIGINT,
+    item_name VARCHAR,
+    category VARCHAR,
+    brand VARCHAR,
+    quantity_in_stock BIGINT
+)`
+
+#### Purpose:
+Stock Summary - Performs specialized database operation.
+
+#### Example SQL Call:
+
+```sql
+SELECT stock_summary();
+```
+
+#### Function Behavior:
+See complete SQL implementation above for detailed logic.
+
+---
+
+### Function 5: `get_serial_number_details()`
+
+#### Complete SQL Code:
+
+```sql
 CREATE FUNCTION public.get_serial_number_details(serial text) RETURNS TABLE(serial_number character varying, item_name character varying, brand character varying, category character varying, purchase_invoice_id bigint, vendor_name character varying, purchase_date date, purchase_price numeric, in_stock boolean, sales_invoice_id bigint, customer_name character varying, sale_date date, sold_price numeric, current_status character varying)
     LANGUAGE plpgsql
     AS $$
@@ -409,6 +463,25 @@ BEGIN
     WHERE pu.serial_number = serial;
 END;
 $$;
---===============================================================================================
---                                       STOCK Reports END
---===============================================================================================
+```
+
+#### Parameters:
+- `serial text`
+
+#### Returns:
+`TABLE(serial_number character varying, item_name character varying, brand character varying, category character varying, purchase_invoice_id bigint, vendor_name character varying, purchase_date date, purchase_price numeric, in_stock boolean, sales_invoice_id bigint, customer_name character varying, sale_date date, sold_price numeric, current_status character varying)`
+
+#### Purpose:
+Get Serial Number Details - Retrieves data from the database in JSON format.
+
+#### Example SQL Call:
+
+```sql
+SELECT get_serial_number_details(...);
+```
+
+#### Function Behavior:
+See complete SQL implementation above for detailed logic.
+
+---
+

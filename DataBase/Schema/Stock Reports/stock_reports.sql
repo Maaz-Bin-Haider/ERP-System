@@ -200,6 +200,38 @@ FROM stock
 ORDER BY item_id::INTEGER, rn;
 
 
+-- this new view contains age feature
+DROP VIEW IF EXISTS public.stock_report;
+CREATE OR REPLACE VIEW public.stock_report AS
+WITH stock AS (
+    SELECT 
+        i.item_id,
+        i.item_name,
+        COUNT(pu.unit_id) OVER (PARTITION BY i.item_id) AS quantity,
+        pu.serial_number,
+        pu.serial_comment,
+        pi.invoice_date AS purchase_date,
+        CURRENT_DATE - pi.invoice_date AS age_in_days,
+        ROUND((CURRENT_DATE - pi.invoice_date) / 30.44, 1) AS age_in_months,
+        ROW_NUMBER() OVER (PARTITION BY i.item_id ORDER BY pu.serial_number) AS rn
+    FROM public.purchaseunits pu
+    JOIN public.purchaseitems pit ON pu.purchase_item_id = pit.purchase_item_id
+    JOIN public.purchaseinvoices pi ON pit.purchase_invoice_id = pi.purchase_invoice_id
+    JOIN public.items i ON pit.item_id = i.item_id
+    WHERE pu.in_stock = true
+)
+SELECT
+    CASE WHEN rn = 1 THEN item_id::TEXT     ELSE ''::TEXT    END AS item_id,
+    CASE WHEN rn = 1 THEN item_name         ELSE ''::VARCHAR END AS item_name,
+    CASE WHEN rn = 1 THEN quantity::TEXT    ELSE ''::TEXT    END AS quantity,
+    serial_number,
+    serial_comment,
+    age_in_days,
+    age_in_months
+FROM stock
+ORDER BY item_id::INTEGER, rn;
+
+
 -- ======================================================
 -- 5. stock_summary - No changes needed (aggregate level)
 -- ======================================================
@@ -372,6 +404,33 @@ BEGIN
         i.item_name ASC;
 END;
 $$;
+
+
+
+CREATE OR REPLACE VIEW public.item_last_purchase_view AS
+WITH last_purchase AS (
+    SELECT DISTINCT ON (pi.item_id)
+        pi.item_id,
+        pi.unit_price        AS last_purchase_price,
+        pinv.invoice_date    AS last_purchase_date
+    FROM PurchaseItems pi
+    JOIN PurchaseInvoices pinv ON pi.purchase_invoice_id = pinv.purchase_invoice_id
+    ORDER BY pi.item_id, pinv.invoice_date DESC
+)
+SELECT
+    i.item_name,
+    i.category,
+    i.brand,
+    lp.last_purchase_price,
+    lp.last_purchase_date
+FROM Items i
+LEFT JOIN last_purchase lp ON i.item_id = lp.item_id
+ORDER BY i.item_name ASC;
+
+
+
+SELECT * FROM item_last_purchase_view
+
 
 --
 -- Name: get_serial_number_details(text); Type: FUNCTION; Schema: public; Owner: -

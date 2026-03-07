@@ -376,6 +376,237 @@ See complete SQL implementation above for detailed logic.
 
 ---
 
+# `get_party_balances_json_excluding(p_exclude_names)`
+
+## Purpose
+
+Returns a JSON array of party balances — identical to `get_party_balances_json()` — but allows you to **exclude one or more parties by name**. Useful when certain parties (e.g. internal accounts, special vendors, write-off entries) should be hidden from a particular report or UI view.
+
+---
+
+## Signature
+
+```sql
+public.get_party_balances_json_excluding(
+    p_exclude_names TEXT[] DEFAULT ARRAY[]::TEXT[]
+)
+RETURNS JSONB
+```
+
+---
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `p_exclude_names` | `TEXT[]` | `ARRAY[]::TEXT[]` | Array of party names to exclude. Pass an empty array or omit to return all parties (same as the original function). |
+
+---
+
+## Return Format
+
+```json
+[
+  { "name": "Ali Traders", "balance": 15000.00 },
+  { "name": "XYZ Suppliers", "balance": -8500.00 }
+]
+```
+
+Returns `[]` (empty JSON array) if no matching rows are found.
+
+---
+
+## Filtering Logic
+
+The function applies all the same filters as the base `get_party_balances_json()`:
+
+- `code IS NULL` — only parties, not chart-of-accounts entries
+- `type NOT ILIKE '%Expense%'` — excludes Expense Party types
+- `balance <> 0` — skips zero-balance parties
+
+Additionally:
+- `NOT (name = ANY(p_exclude_names))` — skips any party whose name exactly matches an entry in the exclusion array
+
+> **Note:** The name match is **case-sensitive** and must be an exact string match. Ensure the names passed match exactly as stored in the `parties` table.
+
+---
+
+## Usage Examples
+
+**Exclude nothing (equivalent to original function):**
+```sql
+SELECT public.get_party_balances_json_excluding();
+```
+
+**Exclude a single party:**
+```sql
+SELECT public.get_party_balances_json_excluding(ARRAY['John Doe']);
+```
+
+**Exclude multiple parties:**
+```sql
+SELECT public.get_party_balances_json_excluding(ARRAY['John Doe', 'ABC Supplier', 'Internal Account']);
+```
+
+---
+
+## Notes
+
+- The exclusion array is optional. If not provided, the function behaves exactly like `get_party_balances_json()`.
+- Balances can be positive (receivable) or negative (payable) — both are included unless filtered by name.
+- To filter by balance direction, use `get_accounts_receivable_json()` or `get_accounts_payable_json()` instead.
+
+--
+
+
+# `get_accounts_payable_json()`
+
+## Purpose
+
+Returns a JSON array of parties **you owe money to** — i.e., parties with a **negative balance** in the trial balance view. These represent your **Accounts Payable (AP)**: amounts you are expected to pay to vendors, suppliers, or other creditors.
+
+---
+
+## Signature
+
+```sql
+public.get_accounts_payable_json()
+RETURNS JSONB
+```
+
+---
+
+## Parameters
+
+None.
+
+---
+
+## Return Format
+
+```json
+[
+  { "name": "XYZ Suppliers", "balance": 8500.00 },
+  { "name": "Tech Imports Ltd", "balance": 12000.00 }
+]
+```
+
+> Balances are returned as **positive absolute values** for clarity, even though they are stored as negative in the trial balance view.
+
+Returns `[]` (empty JSON array) if no payable parties are found.
+
+---
+
+## Filtering Logic
+
+| Filter | Meaning |
+|---|---|
+| `code IS NULL` | Only party rows, not chart-of-accounts rows |
+| `type NOT ILIKE '%Expense%'` | Excludes Expense Party types |
+| `balance < 0` | **Only negative balances** — you owe this party money |
+| `ABS(balance)` | Converts negative to positive in the output |
+
+> A **negative balance** in `vw_trial_balance` means the party has a net **credit** position — you owe them. This is the standard AP interpretation in double-entry bookkeeping where AP is a credit-normal account.
+
+---
+
+## Usage Example
+
+```sql
+SELECT public.get_accounts_payable_json();
+```
+
+**Sample output:**
+```json
+[
+  { "name": "XYZ Suppliers", "balance": 8500.00 },
+  { "name": "Tech Imports Ltd", "balance": 12000.00 }
+]
+```
+
+---
+
+## Notes
+
+- The `balance` field in the output is always a **positive number** (using `ABS()`), representing the amount you owe — making it easier to display or sum in reports without sign confusion.
+- Zero-balance parties are automatically excluded (since `balance < 0` requires strictly negative).
+- To get parties who owe money to you, use `get_accounts_receivable_json()`.
+- To get all non-zero party balances, use `get_party_balances_json()` or `get_party_balances_json_excluding()`.
+--
+
+
+# `get_accounts_receivable_json()`
+
+## Purpose
+
+Returns a JSON array of parties who **owe money to you** — i.e., parties with a **positive balance** in the trial balance view. These represent your **Accounts Receivable (AR)**: amounts customers or other parties are expected to pay you.
+
+---
+
+## Signature
+
+```sql
+public.get_accounts_receivable_json()
+RETURNS JSONB
+```
+
+---
+
+## Parameters
+
+None.
+
+---
+
+## Return Format
+
+```json
+[
+  { "name": "Ali Traders", "balance": 15000.00 },
+  { "name": "Kareem Electronics", "balance": 4250.50 }
+]
+```
+
+Returns `[]` (empty JSON array) if no receivable parties are found.
+
+---
+
+## Filtering Logic
+
+| Filter | Meaning |
+|---|---|
+| `code IS NULL` | Only party rows, not chart-of-accounts rows |
+| `type NOT ILIKE '%Expense%'` | Excludes Expense Party types |
+| `balance > 0` | **Only positive balances** — party owes you money |
+
+> A **positive balance** in `vw_trial_balance` means the party has a net **debit** position — they owe you. This is the standard AR interpretation in double-entry bookkeeping where AR is a debit-normal account.
+
+---
+
+## Usage Example
+
+```sql
+SELECT public.get_accounts_receivable_json();
+```
+
+**Sample output:**
+```json
+[
+  { "name": "Ali Traders", "balance": 15000.00 },
+  { "name": "Rafiq & Sons", "balance": 3200.00 }
+]
+```
+
+---
+
+## Notes
+
+- Balances are returned **as-is** (positive numbers).
+- Zero-balance parties are automatically excluded (since `balance > 0` requires strictly positive).
+- To get parties you owe money to, use `get_accounts_payable_json()`.
+- To get all non-zero party balances, use `get_party_balances_json()` or `get_party_balances_json_excluding()`.
+--
+
 ### Function 5: `get_party_by_name()`
 
 #### Complete SQL Code:

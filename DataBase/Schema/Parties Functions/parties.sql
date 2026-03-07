@@ -276,6 +276,49 @@ END;
 $$;
 
 
+-- ============================================================
+-- FUNCTION 1: get_party_balances_json_excluding
+-- Returns party balances JSON, excluding specified account names
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.get_party_balances_json_excluding(
+    p_exclude_names TEXT[] DEFAULT ARRAY[]::TEXT[]
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    result JSONB;
+BEGIN
+    SELECT jsonb_agg(
+               jsonb_build_object(
+                   'name', name,
+                   'balance', balance
+               )
+           )
+    INTO result
+    FROM vw_trial_balance
+    WHERE code IS NULL
+      AND type NOT ILIKE '%Expense%'
+      AND balance <> 0
+      AND (
+          p_exclude_names IS NULL
+          OR array_length(p_exclude_names, 1) IS NULL
+          OR NOT (name = ANY(p_exclude_names))
+      );
+
+    RETURN COALESCE(result, '[]'::jsonb);
+END;
+$$;
+
+-- Usage examples:
+-- Exclude nothing (same as original):
+--   SELECT public.get_party_balances_json_excluding();
+--
+-- Exclude specific party names:
+-- SELECT public.get_party_balances_json_excluding(ARRAY['ABDUL MAJID BHAI', 'ABDUL REHMAN BHAI']);
+
+
 --
 -- Name: get_party_by_name(text); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -328,6 +371,153 @@ END;
 $$;
 
 SELECT public.get_expense_party_balances_json();
+
+
+-- ============================================================
+-- FUNCTION 2: get_accounts_receivable_json
+-- Returns only receivable parties (positive balance = amount owed TO us)
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.get_accounts_receivable_json()
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    result JSONB;
+BEGIN
+    SELECT jsonb_agg(
+               jsonb_build_object(
+                   'name', name,
+                   'balance', balance
+               )
+           )
+    INTO result
+    FROM vw_trial_balance
+    WHERE code IS NULL
+      AND type NOT ILIKE '%Expense%'
+      AND balance > 0;   -- Positive = customer owes us (Accounts Receivable)
+
+    RETURN COALESCE(result, '[]'::jsonb);
+END;
+$$;
+
+
+-- ============================================================
+-- FUNCTION 4: get_accounts_receivable_json_excluding
+-- Returns receivable parties (positive balance), excluding specified names
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.get_accounts_receivable_json_excluding(
+    p_exclude_names TEXT[] DEFAULT ARRAY[]::TEXT[]
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    result JSONB;
+BEGIN
+    SELECT jsonb_agg(
+               jsonb_build_object(
+                   'name', name,
+                   'balance', balance
+               )
+           )
+    INTO result
+    FROM vw_trial_balance
+    WHERE code IS NULL
+      AND type NOT ILIKE '%Expense%'
+      AND balance > 0   -- Positive = customer owes us (Accounts Receivable)
+      AND (
+          p_exclude_names IS NULL
+          OR array_length(p_exclude_names, 1) IS NULL
+          OR NOT (name = ANY(p_exclude_names))
+      );
+
+    RETURN COALESCE(result, '[]'::jsonb);
+END;
+$$;
+
+-- Usage examples:
+-- Exclude nothing (same as get_accounts_receivable_json):
+--   SELECT public.get_accounts_receivable_json_excluding();
+--
+-- Exclude specific parties:
+--   SELECT public.get_accounts_receivable_json_excluding(ARRAY['ABDUL REHMAN HOUSTON']);
+
+
+-- ============================================================
+-- FUNCTION 3: get_accounts_payable_json
+-- Returns only payable parties (negative balance = amount we owe)
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.get_accounts_payable_json()
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    result JSONB;
+BEGIN
+    SELECT jsonb_agg(
+               jsonb_build_object(
+                   'name', name,
+                   'balance', ABS(balance)   -- Return as positive absolute value for clarity
+               )
+           )
+    INTO result
+    FROM vw_trial_balance
+    WHERE code IS NULL
+      AND type NOT ILIKE '%Expense%'
+      AND balance < 0;   -- Negative = we owe them (Accounts Payable)
+
+    RETURN COALESCE(result, '[]'::jsonb);
+END;
+$$;
+
+-- Usage:
+--   SELECT public.get_accounts_payable_json();
+
+
+-- ============================================================
+-- FUNCTION 5: get_accounts_payable_json_excluding
+-- Returns payable parties (negative balance), excluding specified names
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.get_accounts_payable_json_excluding(
+    p_exclude_names TEXT[] DEFAULT ARRAY[]::TEXT[]
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    result JSONB;
+BEGIN
+    SELECT jsonb_agg(
+               jsonb_build_object(
+                   'name', name,
+                   'balance', ABS(balance)   -- Return as positive absolute value for clarity
+               )
+           )
+    INTO result
+    FROM vw_trial_balance
+    WHERE code IS NULL
+      AND type NOT ILIKE '%Expense%'
+      AND balance < 0   -- Negative = we owe them (Accounts Payable)
+      AND (
+          p_exclude_names IS NULL
+          OR array_length(p_exclude_names, 1) IS NULL
+          OR NOT (name = ANY(p_exclude_names))
+      );
+
+    RETURN COALESCE(result, '[]'::jsonb);
+END;
+$$;
+
+-- Usage examples:
+-- Exclude nothing (same as get_accounts_payable_json):
+--   SELECT public.get_accounts_payable_json_excluding();
+--
+-- Exclude specific parties:
+--   SELECT public.get_accounts_payable_json_excluding(ARRAY['XYZ Suppliers', 'Tech Imports Ltd']);
 
 --===============================================================================================
 --                                       PARTIES END

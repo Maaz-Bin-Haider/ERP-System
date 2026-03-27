@@ -534,6 +534,89 @@ SELECT public.get_accounts_payable_json();
 - To get all non-zero party balances, use `get_party_balances_json()` or `get_party_balances_json_excluding()`.
 --
 
+# `get_accounts_payable_json_excluding(p_exclude_names)`
+
+## Purpose
+
+Returns a JSON array of parties **you owe money to** (negative balance = Accounts Payable), while allowing you to **exclude specific parties by name**. Useful when certain vendors or suppliers should be omitted from a particular report or dashboard widget.
+
+---
+
+## Signature
+
+```sql
+public.get_accounts_payable_json_excluding(
+    p_exclude_names TEXT[] DEFAULT ARRAY[]::TEXT[]
+)
+RETURNS JSONB
+```
+
+---
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `p_exclude_names` | `TEXT[]` | `ARRAY[]::TEXT[]` | Array of party names to exclude. Pass an empty array or omit to return all payable parties (same as `get_accounts_payable_json()`). |
+
+---
+
+## Return Format
+
+```json
+[
+  { "name": "XYZ Suppliers", "balance": 8500.00 },
+  { "name": "Tech Imports Ltd", "balance": 12000.00 }
+]
+```
+
+> Balances are returned as **positive absolute values** (`ABS()`), even though they are stored as negative in the trial balance view.
+
+Returns `[]` (empty JSON array) if no matching rows are found.
+
+---
+
+## Filtering Logic
+
+| Filter | Meaning |
+|---|---|
+| `code IS NULL` | Only party rows, not chart-of-accounts rows |
+| `type NOT ILIKE '%Expense%'` | Excludes Expense Party types |
+| `balance < 0` | Only negative balances — you owe this party money (AP) |
+| `ABS(balance)` | Converts to positive for cleaner output |
+| `NOT (name = ANY(p_exclude_names))` | Skips parties whose name is in the exclusion array |
+
+> **Note:** Name matching is **case-sensitive** and must be an exact string match.
+
+---
+
+## Usage Examples
+
+**Exclude nothing (equivalent to `get_accounts_payable_json()`):**
+```sql
+SELECT public.get_accounts_payable_json_excluding();
+```
+
+**Exclude a single vendor:**
+```sql
+SELECT public.get_accounts_payable_json_excluding(ARRAY['XYZ Suppliers']);
+```
+
+**Exclude multiple vendors:**
+```sql
+SELECT public.get_accounts_payable_json_excluding(ARRAY['XYZ Suppliers', 'Tech Imports Ltd']);
+```
+
+---
+
+## Notes
+
+- Balances are returned as **positive numbers** via `ABS()` for easier display and summing in reports.
+- Zero-balance parties are automatically excluded since `balance < 0` is strictly negative.
+- To include all AP parties with no exclusions, use `get_accounts_payable_json()`.
+- For receivable parties with exclusion support, use `get_accounts_receivable_json_excluding()`.
+
+
 
 # `get_accounts_receivable_json()`
 
@@ -698,6 +781,88 @@ SELECT get_expense_party_balances_json();
 
 #### Function Behavior:
 See complete SQL implementation above for detailed logic.
+
+---
+
+
+# `get_accounts_receivable_json_excluding(p_exclude_names)`
+
+## Purpose
+
+Returns a JSON array of parties who **owe money to you** (positive balance = Accounts Receivable), while allowing you to **exclude specific parties by name**. Useful when certain customers should be omitted from a particular report or dashboard widget.
+
+---
+
+## Signature
+
+```sql
+public.get_accounts_receivable_json_excluding(
+    p_exclude_names TEXT[] DEFAULT ARRAY[]::TEXT[]
+)
+RETURNS JSONB
+```
+
+---
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `p_exclude_names` | `TEXT[]` | `ARRAY[]::TEXT[]` | Array of party names to exclude. Pass an empty array or omit to return all receivable parties (same as `get_accounts_receivable_json()`). |
+
+---
+
+## Return Format
+
+```json
+[
+  { "name": "Ali Traders", "balance": 15000.00 },
+  { "name": "Kareem Electronics", "balance": 4250.50 }
+]
+```
+
+Returns `[]` (empty JSON array) if no matching rows are found.
+
+---
+
+## Filtering Logic
+
+| Filter | Meaning |
+|---|---|
+| `code IS NULL` | Only party rows, not chart-of-accounts rows |
+| `type NOT ILIKE '%Expense%'` | Excludes Expense Party types |
+| `balance > 0` | Only positive balances — party owes you money (AR) |
+| `NOT (name = ANY(p_exclude_names))` | Skips parties whose name is in the exclusion array |
+
+> **Note:** Name matching is **case-sensitive** and must be an exact string match.
+
+---
+
+## Usage Examples
+
+**Exclude nothing (equivalent to `get_accounts_receivable_json()`):**
+```sql
+SELECT public.get_accounts_receivable_json_excluding();
+```
+
+**Exclude a single customer:**
+```sql
+SELECT public.get_accounts_receivable_json_excluding(ARRAY['Ali Traders']);
+```
+
+**Exclude multiple customers:**
+```sql
+SELECT public.get_accounts_receivable_json_excluding(ARRAY['Ali Traders', 'Rafiq & Sons']);
+```
+
+---
+
+## Notes
+
+- Balances are returned as **positive numbers** (as stored in the trial balance view).
+- Zero-balance parties are automatically excluded since `balance > 0` is strictly positive.
+- To include all AR parties with no exclusions, use `get_accounts_receivable_json()`.
+- For payable parties with exclusion support, use `get_accounts_payable_json_excluding()`.
 
 ---
 

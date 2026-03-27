@@ -519,6 +519,10 @@ $$;
 -- Exclude specific parties:
 --   SELECT public.get_accounts_payable_json_excluding(ARRAY['XYZ Suppliers', 'Tech Imports Ltd']);
 
+
+
+
+
 --===============================================================================================
 --                                       PARTIES END
 --===============================================================================================

@@ -84,6 +84,43 @@ $$;
 -- ======================================================
 -- 2. get_item_stock_by_name - Updated
 -- ======================================================
+-- CREATE OR REPLACE FUNCTION get_item_stock_by_name(p_item_name VARCHAR)
+-- RETURNS TABLE (
+--     item_id_out TEXT,
+--     item_name_out VARCHAR(150),
+--     serial_number_out VARCHAR(100),
+--     serial_comment_out TEXT,
+--     quantity_out TEXT
+-- ) 
+-- LANGUAGE plpgsql
+-- AS $$
+-- BEGIN
+--     RETURN QUERY
+--     WITH stock AS (
+--         SELECT 
+--             i.item_id,
+--             i.item_name,
+--             pu.serial_number,
+--             pu.serial_comment,
+--             COUNT(*) OVER () AS total_quantity,
+--             ROW_NUMBER() OVER (ORDER BY pu.serial_number) AS rn
+--         FROM purchaseunits pu
+--         JOIN purchaseitems pit ON pu.purchase_item_id = pit.purchase_item_id
+--         JOIN items i ON pit.item_id = i.item_id
+--         WHERE i.item_name = p_item_name
+--           AND pu.in_stock = true
+--     )
+--     SELECT 
+--         CASE WHEN rn = 1 THEN item_id::TEXT ELSE '' END,
+--         CASE WHEN rn = 1 THEN item_name ELSE ''::VARCHAR END,
+--         serial_number,
+--         serial_comment,
+--         CASE WHEN rn = 1 THEN total_quantity::TEXT ELSE '' END
+--     FROM stock
+--     ORDER BY rn;
+-- END;
+-- $$;
+
 CREATE OR REPLACE FUNCTION get_item_stock_by_name(p_item_name VARCHAR)
 RETURNS TABLE (
     item_id_out TEXT,
@@ -109,6 +146,14 @@ BEGIN
         JOIN items i ON pit.item_id = i.item_id
         WHERE i.item_name = p_item_name
           AND pu.in_stock = true
+          AND NOT EXISTS (
+              SELECT 1 FROM soldunits su
+              WHERE su.unit_id = pu.unit_id AND su.status = 'Sold'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM purchasereturnitems pri
+              WHERE pri.serial_number = pu.serial_number
+          )
     )
     SELECT 
         CASE WHEN rn = 1 THEN item_id::TEXT ELSE '' END,
@@ -127,7 +172,50 @@ $$;
 -- ======================================================
 
 
-CREATE VIEW public.stock_worth_report AS
+-- CREATE VIEW public.stock_worth_report AS
+-- WITH stock AS (
+--     SELECT 
+--         i.item_id,
+--         i.item_name,
+--         COUNT(pu.unit_id) OVER (PARTITION BY i.item_id) AS quantity,
+--         pu.serial_number,
+--         pu.serial_comment,
+--         pit.unit_price AS purchase_price,
+--         i.sale_price AS market_price,
+--         ROW_NUMBER() OVER (PARTITION BY i.item_id ORDER BY pu.serial_number) AS rn
+--     FROM public.purchaseunits pu
+--     JOIN public.purchaseitems pit ON pu.purchase_item_id = pit.purchase_item_id
+--     JOIN public.items i ON pit.item_id = i.item_id
+--     WHERE pu.in_stock = true
+-- ), 
+-- running AS (
+--     SELECT 
+--         stock.item_id,
+--         stock.item_name,
+--         stock.quantity,
+--         stock.serial_number,
+--         stock.serial_comment,
+--         stock.purchase_price,
+--         stock.market_price,
+--         SUM(stock.purchase_price) OVER (ORDER BY stock.item_id, stock.rn) AS running_total_purchase,
+--         SUM(stock.market_price) OVER (ORDER BY stock.item_id, stock.rn) AS running_total_market,
+--         stock.rn
+--     FROM stock
+-- )
+-- SELECT
+--     CASE WHEN rn = 1 THEN item_id::TEXT ELSE ''::TEXT END AS item_id,
+--     CASE WHEN rn = 1 THEN item_name ELSE ''::VARCHAR END AS item_name,
+--     CASE WHEN rn = 1 THEN quantity::TEXT ELSE ''::TEXT END AS quantity,
+--     serial_number,
+--     serial_comment,
+--     purchase_price,
+--     market_price,
+--     running_total_purchase,
+--     running_total_market
+-- FROM running
+-- ORDER BY item_id::INTEGER, rn;
+
+CREATE OR REPLACE VIEW public.stock_worth_report AS
 WITH stock AS (
     SELECT 
         i.item_id,
@@ -142,6 +230,14 @@ WITH stock AS (
     JOIN public.purchaseitems pit ON pu.purchase_item_id = pit.purchase_item_id
     JOIN public.items i ON pit.item_id = i.item_id
     WHERE pu.in_stock = true
+      AND NOT EXISTS (
+          SELECT 1 FROM public.soldunits su
+          WHERE su.unit_id = pu.unit_id AND su.status = 'Sold'
+      )
+      AND NOT EXISTS (
+          SELECT 1 FROM public.purchasereturnitems pri
+          WHERE pri.serial_number = pu.serial_number
+      )
 ), 
 running AS (
     SELECT 
@@ -201,7 +297,36 @@ ORDER BY item_id::INTEGER, rn;
 
 
 -- this new view contains age feature
-DROP VIEW IF EXISTS public.stock_report;
+-- DROP VIEW IF EXISTS public.stock_report;
+-- CREATE OR REPLACE VIEW public.stock_report AS
+-- WITH stock AS (
+--     SELECT 
+--         i.item_id,
+--         i.item_name,
+--         COUNT(pu.unit_id) OVER (PARTITION BY i.item_id) AS quantity,
+--         pu.serial_number,
+--         pu.serial_comment,
+--         pi.invoice_date AS purchase_date,
+--         CURRENT_DATE - pi.invoice_date AS age_in_days,
+--         ROUND((CURRENT_DATE - pi.invoice_date) / 30.44, 1) AS age_in_months,
+--         ROW_NUMBER() OVER (PARTITION BY i.item_id ORDER BY pu.serial_number) AS rn
+--     FROM public.purchaseunits pu
+--     JOIN public.purchaseitems pit ON pu.purchase_item_id = pit.purchase_item_id
+--     JOIN public.purchaseinvoices pi ON pit.purchase_invoice_id = pi.purchase_invoice_id
+--     JOIN public.items i ON pit.item_id = i.item_id
+--     WHERE pu.in_stock = true
+-- )
+-- SELECT
+--     CASE WHEN rn = 1 THEN item_id::TEXT     ELSE ''::TEXT    END AS item_id,
+--     CASE WHEN rn = 1 THEN item_name         ELSE ''::VARCHAR END AS item_name,
+--     CASE WHEN rn = 1 THEN quantity::TEXT    ELSE ''::TEXT    END AS quantity,
+--     serial_number,
+--     serial_comment,
+--     age_in_days,
+--     age_in_months
+-- FROM stock
+-- ORDER BY item_id::INTEGER, rn;
+
 CREATE OR REPLACE VIEW public.stock_report AS
 WITH stock AS (
     SELECT 
@@ -219,6 +344,14 @@ WITH stock AS (
     JOIN public.purchaseinvoices pi ON pit.purchase_invoice_id = pi.purchase_invoice_id
     JOIN public.items i ON pit.item_id = i.item_id
     WHERE pu.in_stock = true
+      AND NOT EXISTS (
+          SELECT 1 FROM public.soldunits su
+          WHERE su.unit_id = pu.unit_id AND su.status = 'Sold'
+      )
+      AND NOT EXISTS (
+          SELECT 1 FROM public.purchasereturnitems pri
+          WHERE pri.serial_number = pu.serial_number
+      )
 )
 SELECT
     CASE WHEN rn = 1 THEN item_id::TEXT     ELSE ''::TEXT    END AS item_id,
@@ -550,6 +683,37 @@ $$;
 
 
 
+-- CREATE OR REPLACE FUNCTION public.stock_summary()
+-- RETURNS TABLE (
+--     item_id BIGINT,
+--     item_name VARCHAR,
+--     category VARCHAR,
+--     brand VARCHAR,
+--     quantity_in_stock BIGINT
+-- )
+-- LANGUAGE plpgsql
+-- AS $$
+-- BEGIN
+--     RETURN QUERY
+--     SELECT
+--         i.item_id,
+--         i.item_name,
+--         i.category,
+--         i.brand,
+--         COUNT(pu.unit_id) FILTER (WHERE pu.in_stock = TRUE) AS quantity_in_stock
+--     FROM Items i
+--     LEFT JOIN PurchaseItems pi ON i.item_id = pi.item_id
+--     LEFT JOIN PurchaseUnits pu ON pi.purchase_item_id = pu.purchase_item_id
+--     GROUP BY
+--         i.item_id,
+--         i.item_name,
+--         i.category,
+--         i.brand
+--     ORDER BY
+--         i.item_name ASC;
+-- END;
+-- $$;
+
 CREATE OR REPLACE FUNCTION public.stock_summary()
 RETURNS TABLE (
     item_id BIGINT,
@@ -567,21 +731,28 @@ BEGIN
         i.item_name,
         i.category,
         i.brand,
-        COUNT(pu.unit_id) FILTER (WHERE pu.in_stock = TRUE) AS quantity_in_stock
+        COUNT(pu.unit_id) FILTER (
+            WHERE pu.in_stock = TRUE
+              AND NOT EXISTS (
+                  SELECT 1 FROM soldunits su
+                  WHERE su.unit_id = pu.unit_id AND su.status = 'Sold'
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM purchasereturnitems pri
+                  WHERE pri.serial_number = pu.serial_number
+              )
+        ) AS quantity_in_stock
     FROM Items i
     LEFT JOIN PurchaseItems pi ON i.item_id = pi.item_id
     LEFT JOIN PurchaseUnits pu ON pi.purchase_item_id = pu.purchase_item_id
-    GROUP BY
-        i.item_id,
-        i.item_name,
-        i.category,
-        i.brand
-    ORDER BY
-        i.item_name ASC;
+    GROUP BY i.item_id, i.item_name, i.category, i.brand
+    ORDER BY i.item_name ASC;
 END;
 $$;
 
-
+--================================================================================
+-- Last Purchase Amount of Every Item in DB
+--================================================================================
 
 CREATE OR REPLACE VIEW public.item_last_purchase_view AS
 WITH last_purchase AS (
@@ -604,6 +775,30 @@ LEFT JOIN last_purchase lp ON i.item_id = lp.item_id
 ORDER BY i.item_name ASC;
 
 
+--================================================================================
+-- Last Sale Amount of Every Item in DB
+--================================================================================
+CREATE OR REPLACE VIEW public.item_last_sale_view AS
+WITH last_sale AS (
+    SELECT DISTINCT ON (si.item_id)
+        si.item_id,
+        si.unit_price       AS last_sale_price,
+        sinv.invoice_date   AS last_sale_date
+    FROM salesitems si
+    JOIN salesinvoices sinv ON si.sales_invoice_id = sinv.sales_invoice_id
+    ORDER BY si.item_id, sinv.invoice_date DESC
+)
+SELECT
+    i.item_name,
+    i.category,
+    i.brand,
+    ls.last_sale_price,
+    ls.last_sale_date
+FROM items i
+LEFT JOIN last_sale ls ON i.item_id = ls.item_id
+ORDER BY i.item_name ASC;
+
+ 
 
 SELECT * FROM item_last_purchase_view
 

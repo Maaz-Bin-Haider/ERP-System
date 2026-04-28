@@ -522,6 +522,13 @@ $$;
 
 
 
+SELECT update_party_from_json(
+    118,
+    '{
+        "party_name": "NEW ZEALAND PURCHASING"
+    }'::jsonb
+);
+
 
 --===============================================================================================
 --                                       PARTIES END

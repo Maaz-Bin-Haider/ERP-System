@@ -914,7 +914,7 @@ BEGIN;
 -- Fix: restore  genuinely in-stock serials that are not showing in reports
 UPDATE purchaseunits
 SET in_stock = TRUE
-WHERE unit_id IN (2101, 2124, 9244);
+WHERE unit_id IN (9010, 9011);
 
 -- Verification — all 3 must be 0 before committing
 SELECT 'Orphaned sold flag' AS check_name, COUNT(*) AS count

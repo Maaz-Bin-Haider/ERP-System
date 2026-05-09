@@ -802,3 +802,5 @@ JOIN Items AS IN
 ON party_id = item_id
 JOIN ChartOfAccounts as coa
 ON coa.account_id = pa.account_id
+
+
